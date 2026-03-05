@@ -1,0 +1,8 @@
+streamlit
+pandas
+numpy
+requests
+azure-identity
+xlsxwriter
+python-dotenv
+openpyxl
