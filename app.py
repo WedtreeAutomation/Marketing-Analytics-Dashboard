@@ -1,5 +1,6 @@
 import streamlit as st
 import io
+import re
 import pandas as pd
 import numpy as np
 from datetime import date, datetime, timezone, timedelta
@@ -57,10 +58,26 @@ def safe_metric_value(value, format_type="number"):
     """Safely format metric values handling None and invalid values"""
     if value is None:
         return "0"
-   
+
     try:
         if format_type == "currency":
-            return f"₹{float(value):,.2f}"
+            # 1. Format as integer string (No decimals)
+            formatted_val = "{:.2f}".format(round(float(value), 2))
+
+            # Split into integer and decimal parts
+            main_part, decimal_part = formatted_val.split('.')
+
+            # 2. Logic for Indian Thousand Separator (Lakhs/Crores)
+            if len(main_part) > 3:
+                last_three = main_part[-3:]
+                remaining = main_part[:-3]
+
+                # Group the remaining digits in pairs (twos)
+                remaining = re.sub(r'(\d+?)(?=(\d{2})+(?!\d))', r'\1,', remaining)
+                main_part = remaining + ',' + last_three
+
+            # 3. Join back with the decimal part
+            return f"₹{main_part}.{decimal_part}"
         else:
             return f"{int(float(value)):,}"
     except (ValueError, TypeError):
@@ -71,7 +88,8 @@ filter_query = """query {
     executesp_filtersData {
         customer_brand
         store_location
-        country_category
+        utm_source
+        platform
         min_table_date
     }
 }"""
@@ -81,7 +99,7 @@ def get_filter_metadata():
     data = run_query(filter_query)
     if data and 'data' in data and data['data'].get('executesp_filtersData'):
         df = pd.DataFrame(data['data']['executesp_filtersData'])
-       
+
         # Extract global min date from the column
         m_date = date(2023, 1, 1)  # Default fallback
         if not df.empty and 'min_table_date' in df.columns:
@@ -148,13 +166,21 @@ if 'store_location' in available_cols:
 else:
     store_loc = st.sidebar.text_input("Store Location (Enter manually)", placeholder="e.g. Mumbai Store", key="store_input")
 
-# 3. Country Category Filter
-country_cat = None
-if 'country_category' in available_cols:
-    cat_options = sorted(temp_filter_df['country_category'].dropna().unique().tolist())
-    country_cat = st.sidebar.selectbox("Country Category", [None] + cat_options, key="country_cat_filter")
+# 3. UTM Source Filter
+utm_source = None
+if 'utm_source' in available_cols:
+    cat_options = sorted(temp_filter_df['utm_source'].dropna().unique().tolist())
+    utm_source = st.sidebar.selectbox("UTM Source", [None] + cat_options, key="utm_source_filter")
 else:
-    country_cat = st.sidebar.text_input("Country Category (Enter manually)", placeholder="e.g. DOMESTIC", key="country_cat_input")
+    utm_source = st.sidebar.text_input("UTM Source (Enter manually)", placeholder="e.g. Facebook", key="utm_source_input")
+
+# 4. Platform Filter
+platform = None
+if 'platform' in available_cols:
+    pf_options = sorted(temp_filter_df['platform'].dropna().unique().tolist())
+    platform = st.sidebar.selectbox("Platform", [None] + pf_options, key="platform_filter")
+else:
+    platform = st.sidebar.text_input("Platform (Enter manually)", placeholder="e.g. Shopify", key="platform_input")
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("📅 Transaction Period")
@@ -201,9 +227,10 @@ fetch_data = st.sidebar.button("Fetch Analytics Data", type="primary", key="fetc
 # --- GRAPHQL QUERIES ---
 # Metrics query
 metrics_query = """query GetCustomerMetrics(
-    $country_category: String,
+    $utm_source: String,
     $brand: String,
     $store_location: String,
+    $platform: String,
     $city: String,
     $country: String,
     $province: String,
@@ -212,9 +239,10 @@ metrics_query = """query GetCustomerMetrics(
     $end_date: DateTime
 ) {
     executesp_readCustomers_metrics(
-        country_category: $country_category,
+        utm_source: $utm_source,
         brand: $brand,
         store_location: $store_location,
+        platform: $platform,
         city: $city,
         country: $country,
         province: $province,
@@ -230,9 +258,10 @@ metrics_query = """query GetCustomerMetrics(
 
 # Customers query with pagination parameters
 customers_query = """query GetCustomerDetails(
-    $country_category: String,
+    $utm_source: String,
     $brand: String,
     $store_location: String,
+    $platform: String,
     $city: String,
     $country: String,
     $province: String,
@@ -243,9 +272,10 @@ customers_query = """query GetCustomerDetails(
     $pageSize: Int
 ) {
     executesp_readCustomers(
-        country_category: $country_category,
+        utm_source: $utm_source,
         brand: $brand,
         store_location: $store_location,
+        platform: $platform,
         city: $city,
         country: $country,
         province: $province,
@@ -270,6 +300,7 @@ customers_query = """query GetCustomerDetails(
         return_amount
         return_qty
         product_categories
+        utm_source
     }
 }"""
 
@@ -277,12 +308,12 @@ customers_query = """query GetCustomerDetails(
 def format_date_for_graphql(date_obj, is_start_date=True):
     if not date_obj:
         return None
-   
+
     if is_start_date:
         dt = datetime.combine(date_obj, datetime.min.time())
     else:
         dt = datetime.combine(date_obj, datetime.max.time())
-   
+
     dt = dt.replace(tzinfo=timezone.utc)
     return dt.isoformat(timespec='milliseconds').replace('+00:00', 'Z')
 
@@ -293,55 +324,55 @@ def fetch_all_pages(base_variables):
     page_number = 1
     page_size = 10000
     max_pages = 200
-   
+
     # Progress indicators
     progress_bar = st.progress(0)
     status_text = st.empty()
     page_info = st.empty()
-   
+
     total_records_fetched = 0
     estimated_pages = 1
-   
+
     # First, try to get an estimate from metrics
     if st.session_state.metrics_data and st.session_state.metrics_data.get('total_customers'):
         total_estimate = st.session_state.metrics_data.get('total_customers', 0)
         estimated_pages = max(1, (total_estimate + page_size - 1) // page_size)
-   
+
     for page in range(1, max_pages + 1):
         status_text.text(f"📥 Fetching page {page}" + (f" of {estimated_pages}" if estimated_pages > 1 else ""))
-       
+
         page_vars = base_variables.copy()
         page_vars["pageNumber"] = page
         page_vars["pageSize"] = page_size
-       
+
         result = run_query(customers_query, page_vars)
-       
+
         if result and 'data' in result:
             page_data = result['data'].get('executesp_readCustomers', [])
-           
+
             if not page_data:
                 status_text.text(f"✅ Completed! Fetched {total_records_fetched:,} records from {page-1} pages")
                 break
-               
+
             all_data.extend(page_data)
             total_records_fetched += len(page_data)
-           
+
             # Update progress with better estimation
             if estimated_pages > 1:
                 progress = min(page / estimated_pages, 1.0)
             else:
                 progress = page / 20
-           
+
             progress_bar.progress(min(progress, 1.0))
             status_text.text(f"✅ Page {page}: {len(page_data):,} records (Total: {total_records_fetched:,})")
-           
+
             if len(page_data) < page_size:
                 status_text.text(f"✅ Complete! Loaded {total_records_fetched:,} records from {page} pages")
                 break
         else:
             st.error(f"❌ Error fetching page {page}")
             break
-   
+
     progress_bar.empty()
     status_text.empty()
     page_info.empty()
@@ -352,11 +383,11 @@ def fetch_all_pages(base_variables):
 def generate_excel_file(df):
     """Generate Excel file from dataframe (cached for performance)"""
     output = io.BytesIO()
-   
+
     # Add S.No column for export
     export_df = df.copy()
     export_df.insert(0, 'S.No', range(1, len(export_df) + 1))
-   
+
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         export_df.to_excel(writer, index=False, sheet_name='Customer Analytics')
         worksheet = writer.sheets['Customer Analytics']
@@ -364,7 +395,7 @@ def generate_excel_file(df):
             if i < 15:
                 max_len = max(export_df[column].astype(str).map(len).max(), len(column)) + 2
                 worksheet.set_column(i, i, min(max_len, 40))
-   
+
     return output.getvalue()
 
 # --- DATA FETCHING & PROCESSING ---
@@ -374,23 +405,24 @@ if fetch_data and not st.session_state.fetch_in_progress:
     st.session_state.data_loaded = False
     st.session_state.all_data_loaded = False
     st.session_state.search_text = ""
-   
+
     # Reset session state
     st.session_state.full_dataframe = None
     st.session_state.filtered_dataframe = None
     st.session_state.metrics_data = None
     st.session_state.total_records = 0
     st.session_state.error_message = None
-   
+
     # Format dates
     formatted_start = format_date_for_graphql(from_date, is_start_date=True) if from_date else None
     formatted_end = format_date_for_graphql(to_date, is_start_date=False) if to_date else None
-   
+
     # Variables for queries
     variables = {
-        "country_category": country_cat if country_cat else None,
+        "utm_source": utm_source if utm_source else None,
         "brand": brand if brand else None,
         "store_location": store_loc if store_loc else None,
+        "platform": platform if platform else None,
         "city": city_input if city_input else None,
         "country": country_input if country_input else None,
         "province": province_input if province_input else None,
@@ -398,11 +430,11 @@ if fetch_data and not st.session_state.fetch_in_progress:
         "start_date": formatted_start,
         "end_date": formatted_end
     }
-   
+
     with st.spinner('🛰️ Fetching customer analytics data...'):
         # Fetch metrics
         metrics_result = run_query(metrics_query, variables)
-       
+
         if metrics_result and 'data' in metrics_result:
             metrics_raw = metrics_result['data'].get('executesp_readCustomers_metrics')
             if metrics_raw and len(metrics_raw) > 0:
@@ -412,20 +444,20 @@ if fetch_data and not st.session_state.fetch_in_progress:
                     if metrics_data.get(key) is None:
                         metrics_data[key] = 0
                 st.session_state.metrics_data = metrics_data
-       
+
         # Fetch all customer data with progress tracking
         all_raw_data = fetch_all_pages(variables)
-       
+
         if all_raw_data:
             # Convert to DataFrame
             df = pd.DataFrame(all_raw_data)
-           
+
             # Numeric conversion
             num_cols = ['total_spent', 'total_qty', 'return_orders', 'return_amount', 'return_qty', 'total_orders']
             for col in num_cols:
                 if col in df.columns:
                     df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
-           
+
             # Map SQL names to Display Names
             column_map = {
                 'customer_id': 'Customer ID',
@@ -442,31 +474,40 @@ if fetch_data and not st.session_state.fetch_in_progress:
                 'return_orders': 'Return Orders',
                 'return_amount': 'Return Amount',
                 'return_qty': 'Return Qty',
-                'product_categories': 'Product Categories'
+                'product_categories': 'Product Categories',
+                'utm_source': 'UTM Sources'
             }
-           
+
             rename_map = {k: v for k, v in column_map.items() if k in df.columns}
             if rename_map:
                 df = df.rename(columns=rename_map)
-           
+
             # Convert date column
             if 'Latest Order Date' in df.columns:
                 df['Latest Order Date'] = pd.to_datetime(df['Latest Order Date']).dt.date
-           
-            # Process product categories
+
+            # 1. Process Product Categories
             if 'Product Categories' in df.columns:
                 df['Product Categories'] = df['Product Categories'].apply(
-                    lambda x: list(set(x.split(', '))) if isinstance(x, str) and x else []
+                    lambda x: sorted(list(set([item.strip() for item in x.split(',') if item.strip()]))) 
+                    if isinstance(x, str) and x.strip() else []
                 )
-           
+
+            # 2. Process UTM Sources
+            if 'UTM Sources' in df.columns:
+                df['UTM Sources'] = df['UTM Sources'].apply(
+                    lambda x: sorted(list(set([item.strip() for item in x.split(',') if item.strip()]))) 
+                    if isinstance(x, str) and x.strip() else []
+                )
+
             st.session_state.full_dataframe = df
             st.session_state.filtered_dataframe = df.copy()
             st.session_state.total_records = len(df)
             st.session_state.data_loaded = True
             st.session_state.all_data_loaded = True
-           
+
             st.success(f"✅ Successfully loaded all {len(df):,} customer records!")
-           
+
             # Show summary of customers with/without orders
             if 'Total Orders' in df.columns:
                 with_orders = len(df[df['Total Orders'] > 0])
@@ -479,7 +520,7 @@ if fetch_data and not st.session_state.fetch_in_progress:
             st.session_state.filtered_dataframe = pd.DataFrame()
             st.session_state.data_loaded = True
             st.session_state.all_data_loaded = True
-   
+
     st.session_state.fetch_in_progress = False
     st.rerun()
 
@@ -488,21 +529,21 @@ def apply_search():
     """Apply search filter to the dataframe"""
     if st.session_state.full_dataframe is None or st.session_state.full_dataframe.empty:
         return
-   
+
     search_text = st.session_state.search_input
     st.session_state.search_text = search_text
-   
+
     if search_text:
         q = search_text.strip().lower()
         mask = pd.Series([False] * len(st.session_state.full_dataframe))
-       
+
         if 'Customer Name' in st.session_state.full_dataframe.columns:
             mask |= st.session_state.full_dataframe['Customer Name'].str.lower().str.contains(q, na=False)
         if 'Email' in st.session_state.full_dataframe.columns:
             mask |= st.session_state.full_dataframe['Email'].str.lower().str.contains(q, na=False)
         if 'Phone' in st.session_state.full_dataframe.columns:
             mask |= st.session_state.full_dataframe['Phone'].astype(str).str.contains(q, na=False)
-       
+
         st.session_state.filtered_dataframe = st.session_state.full_dataframe[mask].copy()
     else:
         st.session_state.filtered_dataframe = st.session_state.full_dataframe.copy()
@@ -559,25 +600,25 @@ if st.session_state.metrics_data:
     st.write("### Summary Metrics")
     metrics = st.session_state.metrics_data
     col1, col2, col3 = st.columns(3)
-   
+
     with col1:
         st.container(border=True).metric(
             "Total Customers",
             safe_metric_value(metrics.get('total_customers'))
         )
-   
+
     with col2:
         st.container(border=True).metric(
             "Total Orders",
             safe_metric_value(metrics.get('total_orders'))
         )
-   
+
     with col3:
         st.container(border=True).metric(
             "Total Revenue",
             safe_metric_value(metrics.get('total_spent'), "currency")
         )
-   
+
     st.divider()
 
 # Main data display
@@ -589,11 +630,11 @@ if st.session_state.data_loaded and st.session_state.full_dataframe is not None:
             st.write("### 🔍 Search Customers")
         with col2:
             st.markdown('<div class="export-button-container">', unsafe_allow_html=True)
-           
+
             # Generate Excel file data
             excel_data = generate_excel_file(st.session_state.full_dataframe)
             file_size = len(excel_data) / (1024 * 1024)
-           
+
             st.download_button(
                 label=f"📥 Export to Excel ({file_size:.1f} MB)",
                 data=excel_data,
@@ -603,7 +644,7 @@ if st.session_state.data_loaded and st.session_state.full_dataframe is not None:
                 key="download_excel"
             )
             st.markdown('</div>', unsafe_allow_html=True)
-       
+
         # Search bar and clear button row
         col1, col2 = st.columns([5, 1])
         with col1:
@@ -619,42 +660,52 @@ if st.session_state.data_loaded and st.session_state.full_dataframe is not None:
             if st.button("Clear Filter", type="secondary", width="stretch"):
                 clear_search()
                 st.rerun()
-       
+
         # Get the current dataframe to display (filtered or full)
         display_df = st.session_state.filtered_dataframe.copy()
-       
+
         # Show search status
         if st.session_state.search_text:
             st.caption(f"🔍 Filtered by: '{st.session_state.search_text}' • Showing {len(display_df):,} of {len(st.session_state.full_dataframe):,} records")
-        
+
         if not display_df.empty:
             # --- THE "STAY SEQUENTIAL" FIX ---
             # 1. Drop any existing index and reset it to 0, 1, 2...
             display_df = display_df.reset_index(drop=True)
-            
+
             # 2. Create a clean S.No column starting from 1
             display_df.insert(0, 'S.No', range(1, len(display_df) + 1))
-            
+
+            # --- APPLY CUSTOM INDIAN CURRENCY FORMATTING ---
+            # We apply your safe_metric_value function to the specific columns
+            display_df['Total Spent'] = display_df['Total Spent'].apply(
+                lambda x: safe_metric_value(x, format_type="currency")
+            )
+            display_df['Return Amount'] = display_df['Return Amount'].apply(
+                lambda x: safe_metric_value(x, format_type="currency")
+            )
+
             # Configure column display
             column_config = {
                 "S.No": st.column_config.NumberColumn("S.No", width="small", help="Row number"),
                 "Customer ID": None, 
                 "Total Orders": st.column_config.NumberColumn("Orders", help="0 = Customer has no orders"),
-                "Total Spent": st.column_config.NumberColumn("Spent", format="₹%.2f"),
-                "Total Qty": st.column_config.NumberColumn("Quantity"),
+                "Total Spent": st.column_config.TextColumn("Amount Spent"),
+                "Total Qty": st.column_config.NumberColumn("Quantity Ordered"),
                 "Return Orders": st.column_config.NumberColumn("Returns"),
-                "Return Amount": st.column_config.NumberColumn("Return Amt", format="₹%.2f"),
-                "Return Qty": st.column_config.NumberColumn("Return Qty"),
-                "Latest Order Date": st.column_config.DateColumn("Last Order"),
-                "Product Categories": st.column_config.ListColumn("Categories")
+                "Return Amount": st.column_config.TextColumn("Return Amount"),
+                "Return Qty": st.column_config.NumberColumn("Return Quantity"),
+                "Latest Order Date": st.column_config.DateColumn("Last Order Date"),
+                "Product Categories": st.column_config.ListColumn("Product Categories"),
+                "UTM Sources": st.column_config.ListColumn("UTM Sources")
             }
-            
+
             # 3. Explicitly include "S.No" at the start of the order
             base_order = ["S.No", "Customer Name", "Email", "Phone", "City", "Province", "Country"]
-            additional = ["Total Orders", "Total Spent", "Total Qty", "Return Orders", "Return Amount", "Return Qty", "Product Categories", "Latest Order Date"]
-            
+            additional = ["Total Orders", "Total Spent", "Total Qty", "Return Orders", "Return Amount", "Return Qty", "UTM Sources", "Product Categories", "Latest Order Date"]
+
             column_order = [col for col in base_order + additional if col in display_df.columns]
-            
+
             st.dataframe(
                 display_df,
                 column_config=column_config,
