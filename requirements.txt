@@ -6,3 +6,4 @@ azure-identity
 xlsxwriter
 python-dotenv
 openpyxl
+sqlalchemy
