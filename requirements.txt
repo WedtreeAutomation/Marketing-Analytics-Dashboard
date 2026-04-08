@@ -7,3 +7,4 @@ xlsxwriter
 python-dotenv
 openpyxl
 sqlalchemy
+pyodbc
