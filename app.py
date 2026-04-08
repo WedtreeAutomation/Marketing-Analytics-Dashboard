@@ -404,7 +404,19 @@ def generate_excel_file(df):
         worksheet = writer.sheets['Customer Analytics']
         for i, column in enumerate(export_df.columns):
             if i < 15:
-                max_len = max(export_df[column].astype(str).map(len).max(), len(column)) + 2
+                try:
+                    col_series = export_df[column]
+        
+                    # ✅ Convert safely to string
+                    col_series = col_series.apply(
+                        lambda x: ", ".join(x) if isinstance(x, list) else str(x) if pd.notnull(x) else ""
+                    )
+        
+                    max_len = max(col_series.map(len).max(), len(column)) + 2
+        
+                except Exception:
+                    max_len = len(column) + 2  # fallback
+        
                 worksheet.set_column(i, i, min(max_len, 40))
    
     return output.getvalue()
