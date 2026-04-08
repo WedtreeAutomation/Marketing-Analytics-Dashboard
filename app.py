@@ -1,5 +1,5 @@
-import streamlit as st
 import io
+import streamlit as st
 import re   
 import pandas as pd
 from azure.identity import ClientSecretCredential
