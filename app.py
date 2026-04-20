@@ -1,5 +1,5 @@
-import io
 import streamlit as st
+import io
 import re   
 import pandas as pd
 from azure.identity import ClientSecretCredential
@@ -99,14 +99,19 @@ def safe_metric_value(value, format_type="number"):
 
 # --- FETCH DYNAMIC FILTER DATA ---
 filter_query = """
-SELECT 
-    customer_brand,
-    store_location,
-    utm_source,
-    platform,
-    MIN(order_date) AS min_table_date
-FROM Customer_Analytics.customers_app
-GROUP BY customer_brand, store_location, utm_source, platform
+WITH min_date_cte AS (
+    SELECT MIN(order_date) AS min_table_date
+    FROM Customer_Analytics.customers_app
+)
+
+SELECT DISTINCT
+    c.customer_brand,
+    c.store_location,
+    c.utm_source,
+    c.platform,
+    m.min_table_date
+FROM Customer_Analytics.customers_app c
+CROSS JOIN min_date_cte m;
 """
 
 @st.cache_data(ttl=600)
@@ -146,7 +151,7 @@ if 'total_records' not in st.session_state:
 if 'fetch_in_progress' not in st.session_state:
     st.session_state.fetch_in_progress = False
 if 'from_date' not in st.session_state:
-    st.session_state.from_date = None
+    st.session_state.from_date = global_min_date
 if 'to_date' not in st.session_state:
     st.session_state.to_date = None
 if 'filters_applied' not in st.session_state:
@@ -241,7 +246,7 @@ with col_from:
     st.markdown("**From Date**")
     from_date = st.date_input(
         "Select From Date",
-        value=None,
+        value=st.session_state.from_date,
         min_value=global_min_date,
         max_value=date.today(),
         key="from_date_input",
@@ -273,7 +278,6 @@ prod_category = st.sidebar.text_input("Product Category", placeholder="e.g. Silk
 # Fetch button
 fetch_data = st.sidebar.button("Fetch Analytics Data", type="primary", key="fetch_button")
 
-# --- GRAPHQL QUERIES ---
 # Metrics query
 metrics_query = """
 SELECT 
@@ -379,7 +383,6 @@ def fetch_all_data(base_variables):
     status_text.text("📥 Fetching customer data...")
 
     result = run_query(customers_query, base_variables)
-    print(result)
 
     if result is not None and not result.empty:
         data = result.to_dict(orient="records")
@@ -406,17 +409,17 @@ def generate_excel_file(df):
             if i < 15:
                 try:
                     col_series = export_df[column]
-        
+
                     # ✅ Convert safely to string
                     col_series = col_series.apply(
                         lambda x: ", ".join(x) if isinstance(x, list) else str(x) if pd.notnull(x) else ""
                     )
-        
+
                     max_len = max(col_series.map(len).max(), len(column)) + 2
-        
+
                 except Exception:
                     max_len = len(column) + 2  # fallback
-        
+
                 worksheet.set_column(i, i, min(max_len, 40))
    
     return output.getvalue()
