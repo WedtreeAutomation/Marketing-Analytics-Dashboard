@@ -13,7 +13,7 @@ import time
 
 warnings.filterwarnings("ignore")
 
-# =============================s
+# =============================
 # ENV CONFIG
 # =============================
 load_dotenv()
@@ -30,8 +30,287 @@ DATABASE = "WT_LH_Gold"
 SCOPE = os.getenv("SCOPE")
 
 # Page configuration
-st.set_page_config(page_title="Customer Analytics Dashboard", layout="wide")
-st.title("📊 Customer Analytics Dashboard")
+st.set_page_config(
+    page_title="Customer Analytics Dashboard", 
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# =============================
+# CUSTOM CSS FOR LIGHT THEME UI
+# =============================
+st.markdown("""
+<style>
+    /* Main container styling */
+    .main {
+        padding: 0rem 1rem;
+    }
+    
+    /* Header styling */
+    .main-header {
+        background: linear-gradient(135deg, #1a73e8 0%, #0d47a1 100%);
+        padding: 1.5rem 2rem;
+        border-radius: 12px;
+        margin-bottom: 2rem;
+        color: white;
+    }
+    
+    .main-header h1 {
+        margin: 0;
+        font-size: 2rem;
+        font-weight: 600;
+    }
+    
+    .main-header p {
+        margin: 0.5rem 0 0 0;
+        opacity: 0.9;
+        font-size: 0.9rem;
+    }
+    
+    /* Metric card — pure HTML, no Streamlit widget inside */
+    .metric-card {
+        background-color: white;
+        border-radius: 12px;
+        padding: 1.4rem 1.6rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+        border: 1px solid #e0e0e0;
+        transition: box-shadow 0.3s ease, transform 0.3s ease;
+        min-height: 110px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 0.35rem;
+    }
+
+    .metric-card:hover {
+        box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+        transform: translateY(-2px);
+    }
+
+    .metric-card .mc-label {
+        font-size: 0.72rem;
+        font-weight: 600;
+        color: #6b7280;
+        text-transform: uppercase;
+        letter-spacing: 0.7px;
+        margin: 0;
+        line-height: 1;
+    }
+
+    .metric-card .mc-value {
+        font-size: 1.85rem;
+        font-weight: 700;
+        color: #111827;
+        margin: 0;
+        line-height: 1.15;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    
+    /* Divider styling */
+    hr {
+        margin: 1.5rem 0 !important;
+        border: none !important;
+        height: 1px !important;
+        background: linear-gradient(to right, #e0e0e0, transparent) !important;
+    }
+    
+    /* Tab styling */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 2rem;
+        background-color: #f8f9fa;
+        padding: 0.5rem;
+        border-radius: 12px;
+        margin-bottom: 1.5rem;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        border-radius: 8px;
+        padding: 0.5rem 1.5rem;
+        font-weight: 500;
+        transition: all 0.2s ease;
+    }
+    
+    .stTabs [aria-selected="true"] {
+        background-color: white !important;
+        color: #1a73e8 !important;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    /* Primary action button — blue */
+    .stButton > button[kind="primary"],
+    .stButton > button {
+        background-color: #1a73e8;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 0.5rem 1rem;
+        font-weight: 500;
+        font-size: 0.875rem;
+        transition: background-color 0.2s ease, box-shadow 0.2s ease;
+        width: 100%;
+        height: 38px;
+        line-height: 1;
+    }
+    
+    .stButton > button:hover {
+        background-color: #1558b0;
+        box-shadow: 0 2px 8px rgba(26, 115, 232, 0.35);
+    }
+
+    /* Clear filter button — neutral gray */
+    .stButton > button[data-testid*="clear"] {
+        background-color: #6b7280 !important;
+        color: white !important;
+    }
+
+    .stButton > button[data-testid*="clear"]:hover {
+        background-color: #4b5563 !important;
+    }
+    
+    /* Download / Export button — green */
+    .stDownloadButton > button {
+        background-color: #16a34a !important;
+        color: white !important;
+        border: none;
+        border-radius: 8px;
+        padding: 0.5rem 1rem;
+        font-weight: 500;
+        font-size: 0.875rem;
+        width: 100%;
+        height: 38px;
+        line-height: 1;
+        transition: background-color 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .stDownloadButton > button:hover {
+        background-color: #15803d !important;
+        box-shadow: 0 2px 8px rgba(22, 163, 74, 0.35);
+    }
+    
+    /* Search box styling */
+    .stTextInput input {
+        border-radius: 8px;
+        border: 1px solid #e0e0e0;
+        padding: 0.6rem 1rem;
+        font-size: 0.9rem;
+        transition: all 0.3s ease;
+        height: 38px;
+    }
+    
+    .stTextInput input:focus {
+        border-color: #1a73e8;
+        box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.12);
+    }
+    
+    /* Info box styling */
+    .stAlert {
+        border-radius: 8px;
+        border-left: 4px solid #1a73e8;
+    }
+    
+    /* Sidebar styling */
+    [data-testid="stSidebar"] {
+        background-color: #f8f9fa;
+        border-right: 1px solid #e0e0e0;
+    }
+    
+    [data-testid="stSidebar"] .stSelectbox label,
+    [data-testid="stSidebar"] .stDateInput label,
+    [data-testid="stSidebar"] .stTextInput label {
+        font-weight: 500;
+        color: #495057;
+        font-size: 0.85rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    /* Dataframe styling */
+    [data-testid="stDataFrame"] {
+        border-radius: 8px;
+        border: 1px solid #e0e0e0;
+        overflow: hidden;
+    }
+    
+    /* Success message styling */
+    .stSuccess {
+        border-radius: 8px;
+        background-color: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+    }
+    
+    /* Caption styling */
+    .custom-caption {
+        font-size: 0.95rem;
+        color: #374151;
+        margin-top: 0.25rem;
+        display: inline-block;
+    }
+    
+    /* Inline view selector row — tighten gap */
+    .view-selector-row {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        margin-bottom: 1.25rem;
+        flex-wrap: wrap;
+    }
+
+    .view-selector-label {
+        font-weight: 600;
+        color: #1a1a2e;
+        font-size: 0.95rem;
+        white-space: nowrap;
+        margin: 0;
+    }
+
+    /* Push radio buttons inline with label */
+    .view-selector-row .stRadio {
+        margin: 0 !important;
+    }
+
+    .view-selector-row .stRadio > div {
+        flex-direction: row !important;
+        gap: 0.75rem !important;
+        align-items: center;
+    }
+
+    .view-selector-row .stRadio [data-testid="stWidgetLabel"] {
+        display: none !important;  /* hide the default label; we show our own */
+    }
+
+    /* Radio button items */
+    .stRadio label {
+        font-weight: 500;
+        font-size: 0.875rem;
+        padding: 0.35rem 0.85rem;
+        cursor: pointer;
+        transition: all 0.18s ease;
+        color: #374151;
+    }
+
+    .stRadio label:hover {
+        border-color: #1a73e8;
+        color: #1a73e8;
+    }
+
+    /* Header row for table title + export */
+    .header-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+        padding: 0 0.25rem;
+    }
+
+    /* Loading spinner */
+    .stSpinner > div {
+        border-top-color: #1a73e8 !important;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 @st.cache_resource
 def get_engine():
@@ -75,23 +354,16 @@ def safe_metric_value(value, format_type="number"):
    
     try:
         if format_type == "currency":
-            # 1. Format as integer string (No decimals)
             formatted_val = "{:.2f}".format(round(float(value), 2))
-            
-            # Split into integer and decimal parts
             main_part, decimal_part = formatted_val.split('.')
             
-            # 2. Logic for Indian Thousand Separator (Lakhs/Crores)
             if len(main_part) > 3:
                 last_three = main_part[-3:]
                 remaining = main_part[:-3]
-                
-                # Group the remaining digits in pairs (twos)
                 remaining = re.sub(r'(\d+?)(?=(\d{2})+(?!\d))', r'\1,', remaining)
                 main_part = remaining + ',' + last_three
                 
-            # 3. Join back with the decimal part
-            return f"₹{main_part}.{decimal_part}"
+            return f"Rs.{main_part}.{decimal_part}"
         else:
             return f"{int(float(value)):,}"
     except (ValueError, TypeError):
@@ -162,41 +434,39 @@ if 'search_text' not in st.session_state:
     st.session_state.search_text = ""
 
 # =============================
-# LOGIN SECTION (ENTER TO SUBMIT)
+# LOGIN SECTION
 # =============================
-st.sidebar.header("🔐 Login")
+st.sidebar.header("Login")
 
 if not st.session_state.logged_in:
 
     with st.sidebar.form("login_form"):
         username_input = st.text_input("Username")
         password_input = st.text_input("Password", type="password")
-
-        login_btn = st.form_submit_button("Login")
+        login_btn = st.form_submit_button("Login", use_container_width=True)
 
     if login_btn:
         if username_input == APP_USERNAME and password_input == APP_PASSWORD:
             st.session_state.logged_in = True
-            st.sidebar.success("✅ Logged in successfully")
+            st.sidebar.success("Logged in successfully")
             st.rerun()
         else:
-            st.sidebar.error("❌ Invalid username or password")
+            st.sidebar.error("Invalid username or password")
 
-    # 🚨 Stop rest of app until login
     st.stop()
 
 else:
-    st.sidebar.success("✅ Logged in")
+    st.sidebar.success("Logged in")
 
-    if st.sidebar.button("Logout"):
+    if st.sidebar.button("Logout", use_container_width=True):
         st.session_state.logged_in = False
         st.rerun()
         
 # --- SIDEBAR FILTERS ---
-st.sidebar.header("Filter Settings")
+st.sidebar.markdown("---")
+st.sidebar.subheader("Filter Settings")
 temp_filter_df = df_filter_master.copy()
 
-# Safety Check: Ensure columns exist to avoid KeyError
 available_cols = temp_filter_df.columns.tolist()
 
 # 1. Brand Filter
@@ -237,9 +507,8 @@ else:
     platform = st.sidebar.text_input("Platform (Enter manually)", placeholder="e.g. Shopify", key="platform_input")
 
 st.sidebar.markdown("---")
-st.sidebar.subheader("📅 Transaction Period")
+st.sidebar.subheader("Transaction Period")
 
-# Create two columns for From and To dates in sidebar
 col_from, col_to = st.sidebar.columns(2)
 
 with col_from:
@@ -266,17 +535,17 @@ with col_to:
         help="Leave empty to fetch until today"
     )
 
-st.sidebar.caption(f"💡 Leave dates empty to fetch all data from {global_min_date} to today")
+st.sidebar.caption(f"Leave dates empty to fetch all data from {global_min_date} to today")
 
 st.sidebar.markdown("---")
-st.sidebar.subheader("🔍 Search Criteria")
+st.sidebar.subheader("Search Criteria")
 city_input = st.sidebar.text_input("City", placeholder="e.g. Chennai", key="city_input")
 country_input = st.sidebar.text_input("Country", placeholder="e.g. India", key="country_input")
 province_input = st.sidebar.text_input("Province", placeholder="e.g. Tamil Nadu", key="province_input")
 prod_category = st.sidebar.text_input("Product Category", placeholder="e.g. Silk Sarees", key="category_input")
 
-# Fetch button
-fetch_data = st.sidebar.button("Fetch Analytics Data", type="primary", key="fetch_button")
+st.sidebar.markdown("---")
+fetch_data = st.sidebar.button("Fetch Analytics Data", type="primary", key="fetch_button", use_container_width=True)
 
 # Metrics query
 metrics_query = """
@@ -298,8 +567,8 @@ WHERE
     AND (:end_date IS NULL OR order_date <= :end_date)
 """
 
-# Customers query with pagination parameters
-customers_query = """WITH base AS (
+# Customers query - PHONE LEVEL
+customers_query_phone = """WITH base AS (
     SELECT *
     FROM Customer_Analytics.customers_app
     WHERE 
@@ -316,32 +585,30 @@ customers_query = """WITH base AS (
 ),
 
 agg_categories AS (
-    SELECT customer_id,
+    SELECT phone,
            STRING_AGG(CAST(product_category AS VARCHAR(MAX)), ', ') AS product_categories
     FROM (
-        SELECT DISTINCT customer_id, product_category
+        SELECT DISTINCT phone, product_category
         FROM base
-        WHERE product_category IS NOT NULL
+        WHERE product_category IS NOT NULL AND phone IS NOT NULL
     ) x
-    GROUP BY customer_id
+    GROUP BY phone
 ),
 
 agg_utm AS (
-    SELECT customer_id,
+    SELECT phone,
            STRING_AGG(CAST(utm_source AS VARCHAR(MAX)), ', ') AS utm_source
     FROM (
-        SELECT DISTINCT customer_id, utm_source
+        SELECT DISTINCT phone, utm_source
         FROM base
-        WHERE utm_source IS NOT NULL
+        WHERE utm_source IS NOT NULL AND phone IS NOT NULL
     ) x
-    GROUP BY customer_id
+    GROUP BY phone
 )
 
 SELECT
-    b.customer_id,
     MAX(b.customer_name) AS customer_name,
-    MAX(b.email) AS email,
-    MAX(b.phone) AS phone,
+    b.phone AS phone,
     MAX(b.city) AS city,
     MAX(b.province) AS province,
     MAX(b.country) AS country,
@@ -359,13 +626,81 @@ SELECT
     au.utm_source
 
 FROM base b
-LEFT JOIN agg_categories ac ON b.customer_id = ac.customer_id
-LEFT JOIN agg_utm au ON b.customer_id = au.customer_id
+LEFT JOIN agg_categories ac ON b.phone = ac.phone
+LEFT JOIN agg_utm au ON b.phone = au.phone
 
-GROUP BY b.customer_id, ac.product_categories, au.utm_source
-ORDER BY total_spent DESC"""
+WHERE b.phone IS NOT NULL
+GROUP BY b.phone, ac.product_categories, au.utm_source
+ORDER BY total_spent DESC
+"""
 
-# --- FUNCTION TO FORMAT DATE FOR GRAPHQL ---
+# Customers query - EMAIL LEVEL
+customers_query_email = """WITH base AS (
+    SELECT *
+    FROM Customer_Analytics.customers_app
+    WHERE 
+        (:utm_source IS NULL OR utm_source = :utm_source)
+        AND (:brand IS NULL OR customer_brand = :brand)
+        AND (:store_location IS NULL OR store_location = :store_location)
+        AND (:platform IS NULL OR platform = :platform)
+        AND (:city IS NULL OR LOWER(city) LIKE '%' + LOWER(:city) + '%')
+        AND (:country IS NULL OR LOWER(country) LIKE '%' + LOWER(:country) + '%')
+        AND (:province IS NULL OR LOWER(province) LIKE '%' + LOWER(:province) + '%')
+        AND (:category IS NULL OR LOWER(product_category) LIKE '%' + LOWER(:category) + '%')
+        AND (:start_date IS NULL OR order_date >= :start_date)
+        AND (:end_date IS NULL OR order_date <= :end_date)
+),
+
+agg_categories AS (
+    SELECT email,
+           STRING_AGG(CAST(product_category AS VARCHAR(MAX)), ', ') AS product_categories
+    FROM (
+        SELECT DISTINCT email, product_category
+        FROM base
+        WHERE product_category IS NOT NULL AND email IS NOT NULL
+    ) x
+    GROUP BY email
+),
+
+agg_utm AS (
+    SELECT email,
+           STRING_AGG(CAST(utm_source AS VARCHAR(MAX)), ', ') AS utm_source
+    FROM (
+        SELECT DISTINCT email, utm_source
+        FROM base
+        WHERE utm_source IS NOT NULL AND email IS NOT NULL
+    ) x
+    GROUP BY email
+)
+
+SELECT
+    MAX(b.customer_name) AS customer_name,
+    b.email AS email,
+    MAX(b.city) AS city,
+    MAX(b.province) AS province,
+    MAX(b.country) AS country,
+    MAX(b.order_date) AS latest_order_date,
+
+    COUNT(DISTINCT b.order_id) AS total_orders,
+    SUM(ISNULL(b.total_lineItem_amount, 0)) AS total_spent,
+    SUM(ISNULL(b.quantity, 0)) AS total_qty,
+
+    COUNT(DISTINCT CASE WHEN b.is_returned_lineItem = 1 THEN b.order_id END) AS return_orders,
+    SUM(CASE WHEN b.is_returned_lineItem = 1 THEN ISNULL(b.total_lineItem_amount, 0) ELSE 0 END) AS return_amount,
+    SUM(CASE WHEN b.is_returned_lineItem = 1 THEN ISNULL(b.quantity, 0) ELSE 0 END) AS return_qty,
+
+    ac.product_categories,
+    au.utm_source
+
+FROM base b
+LEFT JOIN agg_categories ac ON b.email = ac.email
+LEFT JOIN agg_utm au ON b.email = au.email
+
+WHERE b.email IS NOT NULL
+GROUP BY b.email, ac.product_categories, au.utm_source
+ORDER BY total_spent DESC
+"""
+
 def format_date(date_obj, is_start_date=True):
     if not date_obj:
         return None
@@ -378,29 +713,20 @@ def format_date(date_obj, is_start_date=True):
     dt = dt.replace(tzinfo=timezone.utc)
     return dt.isoformat(timespec='milliseconds').replace('+00:00', 'Z')
 
-def fetch_all_data(base_variables):
-    status_text = st.empty()
-    status_text.text("📥 Fetching customer data...")
-
-    result = run_query(customers_query, base_variables)
-
+def fetch_all_data(query, base_variables):
+    result = run_query(query, base_variables)
     if result is not None and not result.empty:
-        data = result.to_dict(orient="records")
-        status_text.text(f"✅ Loaded {len(data):,} records")
-        return data
-    else:
-        status_text.text("⚠️ No data returned from SQL")
-        return []
+        return result.to_dict(orient="records")
+    return []
     
-# --- FUNCTION TO GENERATE EXCEL FILE ---
 @st.cache_data(ttl=3600)
 def generate_excel_file(df):
     """Generate Excel file from dataframe (cached for performance)"""
     output = io.BytesIO()
    
-    # Add S.No column for export
     export_df = df.copy()
-    export_df.insert(0, 'S.No', range(1, len(export_df) + 1))
+    if 'S.No' not in export_df.columns:
+        export_df.insert(0, 'S.No', range(1, len(export_df) + 1))
    
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         export_df.to_excel(writer, index=False, sheet_name='Customer Analytics')
@@ -409,20 +735,25 @@ def generate_excel_file(df):
             if i < 15:
                 try:
                     col_series = export_df[column]
-
-                    # ✅ Convert safely to string
                     col_series = col_series.apply(
                         lambda x: ", ".join(x) if isinstance(x, list) else str(x) if pd.notnull(x) else ""
                     )
-
                     max_len = max(col_series.map(len).max(), len(column)) + 2
-
                 except Exception:
-                    max_len = len(column) + 2  # fallback
-
+                    max_len = len(column) + 2
                 worksheet.set_column(i, i, min(max_len, 40))
    
     return output.getvalue()
+
+@st.cache_data(ttl=600)
+def get_phone_data_cached(variables_tuple):
+    variables = dict(variables_tuple)
+    return fetch_all_data(customers_query_phone, variables)
+
+@st.cache_data(ttl=600)
+def get_email_data_cached(variables_tuple):
+    variables = dict(variables_tuple)
+    return fetch_all_data(customers_query_email, variables)
 
 # --- DATA FETCHING & PROCESSING ---
 if fetch_data and not st.session_state.fetch_in_progress:
@@ -432,18 +763,15 @@ if fetch_data and not st.session_state.fetch_in_progress:
     st.session_state.all_data_loaded = False
     st.session_state.search_text = ""
    
-    # Reset session state
     st.session_state.full_dataframe = None
     st.session_state.filtered_dataframe = None
     st.session_state.metrics_data = None
     st.session_state.total_records = 0
     st.session_state.error_message = None
    
-    # Format dates
     formatted_start = format_date(from_date, is_start_date=True) if from_date else None
     formatted_end = format_date(to_date, is_start_date=False) if to_date else None
    
-    # Variables for queries
     variables = {
         "utm_source": utm_source if utm_source else None,
         "brand": brand if brand else None,
@@ -456,103 +784,34 @@ if fetch_data and not st.session_state.fetch_in_progress:
         "start_date": formatted_start,
         "end_date": formatted_end
     }
+
+    st.session_state.query_variables = variables
    
-    with st.spinner('🛰️ Fetching customer analytics data...'):
-        # Fetch metrics
+    with st.spinner('Fetching customer analytics data...'):
         metrics_result = run_query(metrics_query, variables)
        
         if metrics_result is not None and not metrics_result.empty:
             metrics_raw = metrics_result.to_dict(orient="records")
             if metrics_raw and len(metrics_raw) > 0:
-                # Ensure all values are numbers, not None
                 metrics_data = metrics_raw[0]
                 for key in ['total_customers', 'total_orders', 'total_spent']:
                     if metrics_data.get(key) is None:
                         metrics_data[key] = 0
                 st.session_state.metrics_data = metrics_data
        
-        # Fetch all customer data with progress tracking
-        all_raw_data = fetch_all_data(variables)
-       
-        if all_raw_data:
-            # Convert to DataFrame
-            df = pd.DataFrame(all_raw_data)
-           
-            # Numeric conversion
-            num_cols = ['total_spent', 'total_qty', 'return_orders', 'return_amount', 'return_qty', 'total_orders']
-            for col in num_cols:
-                if col in df.columns:
-                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
-           
-            # Map SQL names to Display Names
-            column_map = {
-                'customer_id': 'Customer ID',
-                'customer_name': 'Customer Name',
-                'email': 'Email',
-                'phone': 'Phone',
-                'city': 'City',
-                'province': 'Province',
-                'country': 'Country',
-                'latest_order_date': 'Latest Order Date',
-                'total_orders': 'Total Orders',
-                'total_spent': 'Total Spent',
-                'total_qty': 'Total Qty',
-                'return_orders': 'Return Orders',
-                'return_amount': 'Return Amount',
-                'return_qty': 'Return Qty',
-                'product_categories': 'Product Categories',
-                'utm_source': 'UTM Sources'
-            }
-           
-            rename_map = {k: v for k, v in column_map.items() if k in df.columns}
-            if rename_map:
-                df = df.rename(columns=rename_map)
-           
-            # Convert date column
-            if 'Latest Order Date' in df.columns:
-                df['Latest Order Date'] = pd.to_datetime(df['Latest Order Date']).dt.date
-           
-            # 1. Process Product Categories
-            if 'Product Categories' in df.columns:
-                df['Product Categories'] = df['Product Categories'].apply(
-                    lambda x: sorted(list(set([item.strip() for item in x.split(',') if item.strip()]))) 
-                    if isinstance(x, str) and x.strip() else []
-                )
+        st.session_state.full_dataframe = None
+        st.session_state.filtered_dataframe = None
+        st.session_state.total_records = 0
+        st.session_state.data_loaded = True
+        st.session_state.all_data_loaded = True
 
-            # 2. Process UTM Sources
-            if 'UTM Sources' in df.columns:
-                df['UTM Sources'] = df['UTM Sources'].apply(
-                    lambda x: sorted(list(set([item.strip() for item in x.split(',') if item.strip()]))) 
-                    if isinstance(x, str) and x.strip() else []
-                )
-           
-            st.session_state.full_dataframe = df
-            st.session_state.filtered_dataframe = df.copy()
-            st.session_state.total_records = len(df)
-            st.session_state.data_loaded = True
-            st.session_state.all_data_loaded = True
-           
-            st.success(f"✅ Successfully loaded all {len(df):,} customer records!")
-           
-            # Show summary of customers with/without orders
-            if 'Total Orders' in df.columns:
-                with_orders = len(df[df['Total Orders'] > 0])
-                without_orders = len(df[df['Total Orders'] == 0])
-                if without_orders > 0:
-                    st.info(f"📊 {with_orders:,} customers with orders • {without_orders:,} customers with no orders")
-        else:
-            st.warning("No customer data available")
-            st.session_state.full_dataframe = pd.DataFrame()
-            st.session_state.filtered_dataframe = pd.DataFrame()
-            st.session_state.data_loaded = True
-            st.session_state.all_data_loaded = True
-   
+        st.success("Filters applied successfully! Switch tabs to view data.")
+
     st.session_state.fetch_in_progress = False
     st.rerun()
 
 # --- SEARCH FUNCTION ---
 def apply_search():
-    """Apply search filter to the dataframe"""
     if st.session_state.full_dataframe is None or st.session_state.full_dataframe.empty:
         return
    
@@ -575,177 +834,199 @@ def apply_search():
         st.session_state.filtered_dataframe = st.session_state.full_dataframe.copy()
 
 def clear_search():
-    """Clear search and reset to full dataframe"""
     st.session_state.search_text = ""
     st.session_state.filtered_dataframe = st.session_state.full_dataframe.copy()
 
-# --- CUSTOM CSS ---
+# --- DISPLAY LOGIC ---
 st.markdown("""
-<style>
-    /* Smaller metric cards */
-    [data-testid="stMetricValue"] {
-        font-size: 1.8rem !important;
-        white-space: nowrap !important;
-    }
-    [data-testid="stMetricLabel"] {
-        font-size: 1rem !important;
-        white-space: nowrap !important;
-    }
-    /* Ensure long numbers don't wrap */
-    div[data-testid="stMetricValue"] > div {
-        white-space: nowrap !important;
-        overflow: visible !important;
-    }
-    /* Header alignment */
-    .header-row {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 1rem;
-    }
-    .search-header {
-        font-size: 1.2rem !important;
-        font-weight: 500 !important;
-        margin: 0 !important;
-    }
-    /* Export button styling */
-    .export-button-container {
-        display: flex;
-        justify-content: flex-end;
-        align-items: center;
-        height: 100%;
-    }
-</style>
+<div class="main-header">
+    <h1>Customer Analytics Dashboard</h1>
+    <p>Comprehensive customer insights and analytics platform</p>
+</div>
 """, unsafe_allow_html=True)
 
-# --- DISPLAY LOGIC ---
-st.write("---")
-
-# Display metrics with safe value handling
+# Display metric KPI cards — pure HTML so values stay inside card boundaries
 if st.session_state.metrics_data:
-    st.write("### Summary Metrics")
-    metrics = st.session_state.metrics_data
     col1, col2, col3 = st.columns(3)
-   
+
     with col1:
-        st.container(border=True).metric(
-            "Total Customers",
-            safe_metric_value(metrics.get('total_customers'))
-        )
-   
+        st.markdown(f"""
+        <div class="metric-card">
+            <p class="mc-label">Total Customers</p>
+            <p class="mc-value">{safe_metric_value(st.session_state.metrics_data.get('total_customers'))}</p>
+        </div>
+        """, unsafe_allow_html=True)
+
     with col2:
-        st.container(border=True).metric(
-            "Total Orders",
-            safe_metric_value(metrics.get('total_orders'))
-        )
-   
+        st.markdown(f"""
+        <div class="metric-card">
+            <p class="mc-label">Total Orders</p>
+            <p class="mc-value">{safe_metric_value(st.session_state.metrics_data.get('total_orders'))}</p>
+        </div>
+        """, unsafe_allow_html=True)
+
     with col3:
-        st.container(border=True).metric(
-            "Total Revenue",
-            safe_metric_value(metrics.get('total_spent'), "currency")
-        )
-   
-    st.divider()
+        st.markdown(f"""
+        <div class="metric-card">
+            <p class="mc-label">Total Revenue</p>
+            <p class="mc-value">{safe_metric_value(st.session_state.metrics_data.get('total_spent'), "currency")}</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("---")
 
 # Main data display
-if st.session_state.data_loaded and st.session_state.full_dataframe is not None:
-    if not st.session_state.full_dataframe.empty:
-        # Header row with Search Customers and Export button
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            st.write("### 🔍 Search Customers")
-        with col2:
-            st.markdown('<div class="export-button-container">', unsafe_allow_html=True)
-           
-            # Generate Excel file data
-            excel_data = generate_excel_file(st.session_state.full_dataframe)
-            file_size = len(excel_data) / (1024 * 1024)
-           
-            st.download_button(
-                label=f"📥 Export to Excel ({file_size:.1f} MB)",
-                data=excel_data,
-                file_name=f"customer_analytics_{date.today()}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                width="stretch",
-                key="download_excel"
-            )
-            st.markdown('</div>', unsafe_allow_html=True)
-       
-        # Search bar and clear button row
-        col1, col2 = st.columns([5, 1])
-        with col1:
-            search_input = st.text_input(
-                "Search",
-                placeholder="Name, email or phone...",
-                value=st.session_state.search_text,
-                key="search_input",
-                label_visibility="collapsed",
-                on_change=apply_search
-            )
-        with col2:
-            if st.button("Clear Filter", type="secondary", width="stretch"):
-                clear_search()
-                st.rerun()
-       
-        # Get the current dataframe to display (filtered or full)
-        display_df = st.session_state.filtered_dataframe.copy()
-       
-        # Show search status
-        if st.session_state.search_text:
-            st.caption(f"🔍 Filtered by: '{st.session_state.search_text}' • Showing {len(display_df):,} of {len(st.session_state.full_dataframe):,} records")
-        
-        if not display_df.empty:
-            # --- THE "STAY SEQUENTIAL" FIX ---
-            # 1. Drop any existing index and reset it to 0, 1, 2...
-            display_df = display_df.reset_index(drop=True)
-            
-            # 2. Create a clean S.No column starting from 1
-            display_df.insert(0, 'S.No', range(1, len(display_df) + 1))
+if st.session_state.data_loaded:
 
-            # --- APPLY CUSTOM INDIAN CURRENCY FORMATTING ---
-            # We apply your safe_metric_value function to the specific columns
-            display_df['Total Spent'] = display_df['Total Spent'].apply(
-                lambda x: safe_metric_value(x, format_type="currency")
-            )
-            display_df['Return Amount'] = display_df['Return Amount'].apply(
-                lambda x: safe_metric_value(x, format_type="currency")
-            )
-            
-            # Configure column display
-            column_config = {
-                "S.No": st.column_config.NumberColumn("S.No", width="small", help="Row number"),
-                "Customer ID": None, 
-                "Total Orders": st.column_config.NumberColumn("Orders", help="0 = Customer has no orders"),
-                "Total Spent": st.column_config.TextColumn("Amount Spent"),
-                "Total Qty": st.column_config.NumberColumn("Quantity Ordered"),
-                "Return Orders": st.column_config.NumberColumn("Returns"),
-                "Return Amount": st.column_config.TextColumn("Return Amount"),
-                "Return Qty": st.column_config.NumberColumn("Return Quantity"),
-                "Latest Order Date": st.column_config.DateColumn("Last Order Date"),
-                "Product Categories": st.column_config.ListColumn("Product Categories"),
-                "UTM Sources": st.column_config.ListColumn("UTM Sources")
-            }
-            
-            # 3. Explicitly include "S.No" at the start of the order
-            base_order = ["S.No", "Customer Name", "Email", "Phone", "City", "Province", "Country"]
-            additional = ["Total Orders", "Total Spent", "Total Qty", "Return Orders", "Return Amount", "Return Qty", "UTM Sources", "Product Categories", "Latest Order Date"]
-            
-            column_order = [col for col in base_order + additional if col in display_df.columns]
-            
-            st.dataframe(
-                display_df,
-                column_config=column_config,
-                column_order=column_order,
-                hide_index=True, # Hide the actual pandas index
-                width="stretch",
-                height=500
-            )
-        else:
-            st.info("No records match your search criteria.")
+    # --- Inline "Select View" label + radio on the same row ---
+    label_col, radio_col = st.columns([0.4, 4])
+
+    with label_col:
+        st.markdown(
+            "<p style='font-weight:600; color:#1a1a2e; font-size:0.95rem; "
+            "padding-top:0.6rem; margin:0; white-space:nowrap;'>Select View</p>",
+            unsafe_allow_html=True
+        )
+
+    with radio_col:
+        view_option = st.radio(
+            label="view_option",
+            options=["Phone Level", "Email Level"],
+            horizontal=True,
+            index=0,
+            label_visibility="collapsed"
+        )
+
+    variables = st.session_state.get("query_variables")
+
+    if variables is None:
+        st.info("Set filters and click 'Fetch Analytics Data'")
+        st.stop()
+
+    if view_option == "Phone Level":
+        raw_data = get_phone_data_cached(tuple(variables.items()))
     else:
-        st.warning("No customer data available")
-else:
-    if st.session_state.fetch_in_progress:
-        st.info("⏳ Fetching data... Please wait.")
+        raw_data = get_email_data_cached(tuple(variables.items()))
+
+    if raw_data:
+        df = pd.DataFrame(raw_data)
+
+        num_cols = ['total_spent', 'total_qty', 'return_orders', 'return_amount', 'return_qty', 'total_orders']
+        for col in num_cols:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+
+        column_map = {
+            'customer_name': 'Customer Name',
+            'email': 'Email',
+            'phone': 'Phone',
+            'city': 'City',
+            'province': 'Province',
+            'country': 'Country',
+            'latest_order_date': 'Latest Order Date',
+            'total_orders': 'Total Orders',
+            'total_spent': 'Total Spent',
+            'total_qty': 'Total Qty',
+            'return_orders': 'Return Orders',
+            'return_amount': 'Return Amount',
+            'return_qty': 'Return Qty',
+            'product_categories': 'Product Categories',
+            'utm_source': 'UTM Sources'
+        }
+
+        rename_map = {k: v for k, v in column_map.items() if k in df.columns}
+        df = df.rename(columns=rename_map)
+
+        if 'Latest Order Date' in df.columns:
+            df['Latest Order Date'] = pd.to_datetime(df['Latest Order Date']).dt.date
+
+        if 'Product Categories' in df.columns:
+            df['Product Categories'] = df['Product Categories'].apply(
+                lambda x: sorted(list(set([item.strip() for item in x.split(',') if item.strip()])))
+                if isinstance(x, str) and x.strip() else []
+            )
+
+        if 'UTM Sources' in df.columns:
+            df['UTM Sources'] = df['UTM Sources'].apply(
+                lambda x: sorted(list(set([item.strip() for item in x.split(',') if item.strip()])))
+                if isinstance(x, str) and x.strip() else []
+            )
+
+        # --- SEARCH BAR (same height as clear button) ---
+        search_col1, search_col2 = st.columns([5, 1])
+
+        with search_col1:
+            search_input = st.text_input(
+                "Search customers",
+                placeholder="Search by Name, Email, or Phone...",
+                key=f"search_{view_option}",
+                label_visibility="collapsed"
+            )
+
+        with search_col2:
+            clear_clicked = st.button(
+                "Clear Filter",
+                key=f"clear_{view_option}",
+                use_container_width=True
+            )
+
+        # --- APPLY SEARCH FILTER ---
+        if clear_clicked:
+            search_input = ""
+
+        if search_input:
+            q = search_input.strip().lower()
+            mask = pd.Series([False] * len(df))
+
+            if 'Customer Name' in df.columns:
+                mask |= df['Customer Name'].astype(str).str.lower().str.contains(q, na=False)
+            if 'Email' in df.columns:
+                mask |= df['Email'].astype(str).str.lower().str.contains(q, na=False)
+            if 'Phone' in df.columns:
+                mask |= df['Phone'].astype(str).str.contains(q, na=False)
+
+            df = df[mask].copy()
+
+        # --- S.NO ---
+        df = df.reset_index(drop=True)
+        df.insert(0, 'S.No', range(1, len(df) + 1))
+
+        # --- FORMAT ---
+        if 'Total Spent' in df.columns:
+            df['Total Spent'] = df['Total Spent'].apply(lambda x: safe_metric_value(x, "currency"))
+
+        if 'Return Amount' in df.columns:
+            df['Return Amount'] = df['Return Amount'].apply(lambda x: safe_metric_value(x, "currency"))
+
+        # --- HEADER ROW: title + export button same width as clear filter ---
+        col1, col2 = st.columns([5, 1])
+
+        with col1:
+            record_count = len(df)
+            display_name = "Phone Level" if view_option == "Phone Level" else "Email Level"
+            st.markdown(f"### {display_name} Customer Data")
+            st.markdown(f"<span class='custom-caption'>Showing {record_count:,} records</span>", unsafe_allow_html=True)
+
+        with col2:
+            excel_data = generate_excel_file(df)
+            file_size = len(excel_data) / (1024 * 1024)
+            file_suffix = "phone" if view_option == "Phone Level" else "email"
+
+            st.download_button(
+                label=f"Export ({file_size:.1f} MB)",
+                data=excel_data,
+                file_name=f"customer_{file_suffix}_{date.today()}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
+
+        # --- TABLE ---
+        st.dataframe(
+            df,
+            hide_index=True,
+            use_container_width=True,
+            height=500
+        )
+
     else:
-        st.info("👈 Set your filters and click 'Fetch Analytics Data' to load results")
+        st.info("No data available for selected filters")
