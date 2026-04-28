@@ -10,6 +10,7 @@ import os
 from dotenv import load_dotenv
 import warnings
 import time
+from streamlit_cookies_manager import EncryptedCookieManager
 
 warnings.filterwarnings("ignore")
 
@@ -35,6 +36,17 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+import logging
+logging.getLogger("streamlit").setLevel(logging.ERROR)
+
+cookies = EncryptedCookieManager(
+    prefix="customer_analytics_",
+    password=APP_PASSWORD  # uses your existing env var as encryption key
+)
+
+if not cookies.ready():
+    st.stop()
 
 # =============================
 # CUSTOM CSS FOR LIGHT THEME UI
@@ -407,7 +419,7 @@ df_filter_master, global_min_date = get_filter_metadata()
 
 # Initialize session state
 if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
+    st.session_state.logged_in = cookies.get("logged_in") == "true" 
 if 'full_dataframe' not in st.session_state:
     st.session_state.full_dataframe = None
 if 'filtered_dataframe' not in st.session_state:
@@ -448,6 +460,8 @@ if not st.session_state.logged_in:
     if login_btn:
         if username_input == APP_USERNAME and password_input == APP_PASSWORD:
             st.session_state.logged_in = True
+            cookies["logged_in"] = "true"
+            cookies.save()
             st.sidebar.success("Logged in successfully")
             st.rerun()
         else:
@@ -460,6 +474,8 @@ else:
 
     if st.sidebar.button("Logout", use_container_width=True):
         st.session_state.logged_in = False
+        cookies["logged_in"] = "false"
+        cookies.save()
         st.rerun()
         
 # --- SIDEBAR FILTERS ---
@@ -551,20 +567,29 @@ fetch_data = st.sidebar.button("Fetch Analytics Data", type="primary", key="fetc
 metrics_query = """
 SELECT 
     COUNT(DISTINCT customer_id) AS total_customers,
-    COUNT(DISTINCT order_id) AS total_orders,
-    SUM(ISNULL(total_lineItem_amount,0)) AS total_spent
-FROM Customer_Analytics.customers_app
-WHERE 
-    (:utm_source IS NULL OR utm_source = :utm_source)
-    AND (:brand IS NULL OR customer_brand = :brand)
-    AND (:store_location IS NULL OR store_location = :store_location)
-    AND (:platform IS NULL OR platform = :platform)
-    AND (:city IS NULL OR LOWER(city) LIKE '%' + LOWER(:city) + '%')
-    AND (:country IS NULL OR LOWER(country) LIKE '%' + LOWER(:country) + '%')
-    AND (:province IS NULL OR LOWER(province) LIKE '%' + LOWER(:province) + '%')
-    AND (:category IS NULL OR LOWER(product_category) LIKE '%' + LOWER(:category) + '%')
-    AND (:start_date IS NULL OR order_date >= :start_date)
-    AND (:end_date IS NULL OR order_date <= :end_date)
+    COUNT(DISTINCT CASE WHEN is_old_order = 0 THEN order_id END) AS total_orders,
+    SUM(deduped.total_lineItem_amount)      
+        AS total_spent
+FROM (
+    SELECT *,
+           ROW_NUMBER() OVER (
+               PARTITION BY order_id, lineItem_id
+               ORDER BY email DESC
+           ) AS rn
+    FROM Customer_Analytics.customers_app
+    WHERE 
+        (:utm_source IS NULL OR utm_source = :utm_source)
+        AND (:brand IS NULL OR customer_brand = :brand)
+        AND (:store_location IS NULL OR store_location = :store_location)
+        AND (:platform IS NULL OR platform = :platform)
+        AND (:city IS NULL OR LOWER(city) LIKE '%' + LOWER(:city) + '%')
+        AND (:country IS NULL OR LOWER(country) LIKE '%' + LOWER(:country) + '%')
+        AND (:province IS NULL OR LOWER(province) LIKE '%' + LOWER(:province) + '%')
+        AND (:category IS NULL OR LOWER(product_category) LIKE '%' + LOWER(:category) + '%')
+        AND (:start_date IS NULL OR order_date >= :start_date)
+        AND (:end_date IS NULL OR order_date <= :end_date)
+    ) deduped
+WHERE rn = 1
 """
 
 # Customers query - PHONE LEVEL
@@ -584,52 +609,72 @@ customers_query_phone = """WITH base AS (
         AND (:end_date IS NULL OR order_date <= :end_date)
 ),
 
+-- Rows WITH orders: deduplicate each line item to one phone
+deduped_with_orders AS (
+    SELECT *,
+           ROW_NUMBER() OVER (
+               PARTITION BY order_id, lineItem_id
+               ORDER BY phone ASC
+           ) AS rn
+    FROM base
+    WHERE phone IS NOT NULL
+      AND order_id IS NOT NULL
+),
+
+-- Rows WITHOUT orders: one row per phone, no dedup needed
+no_orders AS (
+    SELECT *,
+           ROW_NUMBER() OVER (
+               PARTITION BY phone
+               ORDER BY customer_created_date DESC
+           ) AS rn
+    FROM base
+    WHERE phone IS NOT NULL
+      AND order_id IS NULL
+),
+
+clean AS (
+    SELECT * FROM deduped_with_orders WHERE rn = 1
+    UNION ALL
+    SELECT * FROM no_orders WHERE rn = 1
+),
+
 agg_categories AS (
     SELECT phone,
            STRING_AGG(CAST(product_category AS VARCHAR(MAX)), ', ') AS product_categories
-    FROM (
-        SELECT DISTINCT phone, product_category
-        FROM base
-        WHERE product_category IS NOT NULL AND phone IS NOT NULL
-    ) x
+    FROM (SELECT DISTINCT phone, product_category FROM clean WHERE product_category IS NOT NULL) x
     GROUP BY phone
 ),
 
 agg_utm AS (
     SELECT phone,
            STRING_AGG(CAST(utm_source AS VARCHAR(MAX)), ', ') AS utm_source
-    FROM (
-        SELECT DISTINCT phone, utm_source
-        FROM base
-        WHERE utm_source IS NOT NULL AND phone IS NOT NULL
-    ) x
+    FROM (SELECT DISTINCT phone, utm_source FROM clean WHERE utm_source IS NOT NULL) x
     GROUP BY phone
 )
 
 SELECT
-    MAX(b.customer_name) AS customer_name,
-    b.phone AS phone,
-    MAX(b.city) AS city,
-    MAX(b.province) AS province,
-    MAX(b.country) AS country,
-    MAX(b.order_date) AS latest_order_date,
+    MAX(b.customer_name)                    AS customer_name,
+    b.phone                                 AS phone,
+    MAX(b.city)                             AS city,
+    MAX(b.province)                         AS province,
+    MAX(b.country)                          AS country,
+    MAX(b.order_date)                       AS latest_order_date,
 
-    COUNT(DISTINCT b.order_id) AS total_orders,
+    COUNT(DISTINCT CASE WHEN b.is_old_order = 0 THEN b.order_id END)              AS total_orders,
     SUM(ISNULL(b.total_lineItem_amount, 0)) AS total_spent,
-    SUM(ISNULL(b.quantity, 0)) AS total_qty,
+    SUM(ISNULL(b.quantity, 0))              AS total_qty,
 
-    COUNT(DISTINCT CASE WHEN b.is_returned_lineItem = 1 THEN b.order_id END) AS return_orders,
+    COUNT(DISTINCT CASE WHEN b.is_returned_lineItem = 1 THEN b.order_id END)                     AS return_orders,
     SUM(CASE WHEN b.is_returned_lineItem = 1 THEN ISNULL(b.total_lineItem_amount, 0) ELSE 0 END) AS return_amount,
-    SUM(CASE WHEN b.is_returned_lineItem = 1 THEN ISNULL(b.quantity, 0) ELSE 0 END) AS return_qty,
+    SUM(CASE WHEN b.is_returned_lineItem = 1 THEN ISNULL(b.quantity, 0) ELSE 0 END)              AS return_qty,
 
     ac.product_categories,
     au.utm_source
 
-FROM base b
+FROM clean b
 LEFT JOIN agg_categories ac ON b.phone = ac.phone
-LEFT JOIN agg_utm au ON b.phone = au.phone
-
-WHERE b.phone IS NOT NULL
+LEFT JOIN agg_utm au        ON b.phone = au.phone
 GROUP BY b.phone, ac.product_categories, au.utm_source
 ORDER BY total_spent DESC
 """
@@ -651,52 +696,73 @@ customers_query_email = """WITH base AS (
         AND (:end_date IS NULL OR order_date <= :end_date)
 ),
 
+-- Rows WITH orders: deduplicate each line item to one email
+deduped_with_orders AS (
+    SELECT *,
+           ROW_NUMBER() OVER (
+               PARTITION BY order_id, lineItem_id
+               ORDER BY email ASC
+           ) AS rn
+    FROM base
+    WHERE email IS NOT NULL
+      AND order_id IS NOT NULL          -- only rows that have an order
+),
+
+-- Rows WITHOUT orders: one row per email, no dedup needed
+no_orders AS (
+    SELECT *,
+           ROW_NUMBER() OVER (
+               PARTITION BY email
+               ORDER BY customer_created_date DESC   -- pick most recent profile row
+           ) AS rn
+    FROM base
+    WHERE email IS NOT NULL
+      AND order_id IS NULL
+),
+
+-- Combine both, keeping only the winning row from each
+clean AS (
+    SELECT * FROM deduped_with_orders WHERE rn = 1
+    UNION ALL
+    SELECT * FROM no_orders WHERE rn = 1
+),
+
 agg_categories AS (
     SELECT email,
            STRING_AGG(CAST(product_category AS VARCHAR(MAX)), ', ') AS product_categories
-    FROM (
-        SELECT DISTINCT email, product_category
-        FROM base
-        WHERE product_category IS NOT NULL AND email IS NOT NULL
-    ) x
+    FROM (SELECT DISTINCT email, product_category FROM clean WHERE product_category IS NOT NULL) x
     GROUP BY email
 ),
 
 agg_utm AS (
     SELECT email,
            STRING_AGG(CAST(utm_source AS VARCHAR(MAX)), ', ') AS utm_source
-    FROM (
-        SELECT DISTINCT email, utm_source
-        FROM base
-        WHERE utm_source IS NOT NULL AND email IS NOT NULL
-    ) x
+    FROM (SELECT DISTINCT email, utm_source FROM clean WHERE utm_source IS NOT NULL) x
     GROUP BY email
 )
 
 SELECT
-    MAX(b.customer_name) AS customer_name,
-    b.email AS email,
-    MAX(b.city) AS city,
-    MAX(b.province) AS province,
-    MAX(b.country) AS country,
-    MAX(b.order_date) AS latest_order_date,
+    MAX(b.customer_name)                    AS customer_name,
+    b.email                                 AS email,
+    MAX(b.city)                             AS city,
+    MAX(b.province)                         AS province,
+    MAX(b.country)                          AS country,
+    MAX(b.order_date)                       AS latest_order_date,
 
-    COUNT(DISTINCT b.order_id) AS total_orders,
+    COUNT(DISTINCT CASE WHEN b.is_old_order = 0 THEN b.order_id END)   AS total_orders,
     SUM(ISNULL(b.total_lineItem_amount, 0)) AS total_spent,
-    SUM(ISNULL(b.quantity, 0)) AS total_qty,
+    SUM(ISNULL(b.quantity, 0))              AS total_qty,
 
-    COUNT(DISTINCT CASE WHEN b.is_returned_lineItem = 1 THEN b.order_id END) AS return_orders,
+    COUNT(DISTINCT CASE WHEN b.is_returned_lineItem = 1 THEN b.order_id END)                     AS return_orders,
     SUM(CASE WHEN b.is_returned_lineItem = 1 THEN ISNULL(b.total_lineItem_amount, 0) ELSE 0 END) AS return_amount,
-    SUM(CASE WHEN b.is_returned_lineItem = 1 THEN ISNULL(b.quantity, 0) ELSE 0 END) AS return_qty,
+    SUM(CASE WHEN b.is_returned_lineItem = 1 THEN ISNULL(b.quantity, 0) ELSE 0 END)              AS return_qty,
 
     ac.product_categories,
     au.utm_source
 
-FROM base b
+FROM clean b
 LEFT JOIN agg_categories ac ON b.email = ac.email
-LEFT JOIN agg_utm au ON b.email = au.email
-
-WHERE b.email IS NOT NULL
+LEFT JOIN agg_utm au        ON b.email = au.email
 GROUP BY b.email, ac.product_categories, au.utm_source
 ORDER BY total_spent DESC
 """
