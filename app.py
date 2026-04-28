@@ -334,7 +334,14 @@ def get_engine():
         f"&Encrypt=yes"
         f"&TrustServerCertificate=no"
     )
-    return sa.create_engine(connection_string)
+    return sa.create_engine(
+        connection_string,
+        pool_pre_ping=True,        # tests connection before using it
+        pool_recycle=1800,         # recycle connections every 30 minutes
+        pool_timeout=30,
+        pool_size=5,
+        max_overflow=10
+    )
 
 engine = get_engine()
 
